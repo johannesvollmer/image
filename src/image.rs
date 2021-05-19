@@ -9,7 +9,7 @@ use std::usize;
 
 use crate::ImageBuffer;
 use crate::color::{ColorType, ExtendedColorType};
-use crate::error::{ImageError, ImageFormatHint, ImageResult, LimitError, LimitErrorKind, ParameterError, ParameterErrorKind};
+use crate::error::{ImageError, ImageFormatHint, ImageResult, LimitError, LimitErrorKind, ParameterError, ParameterErrorKind, UnsupportedError, UnsupportedErrorKind};
 use crate::math::Rect;
 use crate::traits::Pixel;
 
@@ -159,23 +159,7 @@ impl ImageFormat {
     /// Return if the ImageFormat can be encoded by the lib.
     #[inline]
     pub fn can_write(&self) -> bool {
-        // Needs to be updated once a new variant's encoder is added to free_functions.rs::save_buffer_with_format_impl
-        match self {
-            ImageFormat::Gif => true,
-            ImageFormat::Ico => true,
-            ImageFormat::Jpeg => true,
-            ImageFormat::Png => true,
-            ImageFormat::Bmp => true,
-            ImageFormat::Tiff => true,
-            ImageFormat::Tga => true,
-            ImageFormat::Pnm => true,
-            ImageFormat::Farbfeld => true,
-            ImageFormat::Avif => true,
-            ImageFormat::WebP => false,
-            ImageFormat::Hdr => false,
-            ImageFormat::Dds => false,
-            ImageFormat::__NonExhaustive(marker) => match marker._private {},
-        }
+        ImageOutputFormat::try_from(*self).is_ok()
     }
 
     /// Return a list of applicable extensions for this format.
@@ -235,6 +219,10 @@ pub enum ImageOutputFormat {
     /// An Image in BMP Format
     Bmp,
 
+    #[cfg(feature = "tiff")]
+    /// An Image in TIFF Format
+    Tiff,
+
     #[cfg(feature = "farbfeld")]
     /// An Image in farbfeld Format
     Farbfeld,
@@ -247,18 +235,15 @@ pub enum ImageOutputFormat {
     /// An image in AVIF Format
     Avif,
 
-    /// A value for signalling an error: An unsupported format was requested
-    // Note: When TryFrom is stabilized, this value should not be needed, and
-    // a TryInto<ImageOutputFormat> should be used instead of an Into<ImageOutputFormat>.
-    Unsupported(String),
-
     #[doc(hidden)]
     __NonExhaustive(crate::utils::NonExhaustiveMarker),
 }
 
-impl From<ImageFormat> for ImageOutputFormat {
-    fn from(fmt: ImageFormat) -> Self {
-        match fmt {
+impl TryFrom<ImageFormat> for ImageOutputFormat {
+    type Error = ImageError;
+
+    fn try_from(fmt: ImageFormat) -> ImageResult<Self> {
+        Ok(match fmt {
             #[cfg(feature = "png")]
             ImageFormat::Png => ImageOutputFormat::Png,
             #[cfg(feature = "jpeg")]
@@ -278,7 +263,36 @@ impl From<ImageFormat> for ImageOutputFormat {
             #[cfg(feature = "avif")]
             ImageFormat::Avif => ImageOutputFormat::Avif,
 
-            f => ImageOutputFormat::Unsupported(format!("{:?}", f)),
+            // ? ImageFormat::__NonExhaustive(marker) => match marker._private {},
+
+            unsupported_format => return Err(ImageError::Unsupported(
+                UnsupportedError::from(ImageFormatHint::Exact(unsupported_format))
+            ))
+        })
+    }
+}
+
+impl From<ImageOutputFormat> for ImageFormat {
+    fn from(out_format: ImageOutputFormat) -> Self {
+        match out_format {
+            #[cfg(feature = "png")]
+            ImageOutputFormat::Png => ImageFormat::Png,
+            #[cfg(feature = "jpeg")]
+            ImageOutputFormat::Jpeg(_) => ImageFormat::Jpeg,
+            #[cfg(feature = "pnm")]
+            ImageOutputFormat::Pnm(_) => ImageFormat::Pnm,
+            #[cfg(feature = "gif")]
+            ImageOutputFormat::Gif => ImageFormat::Gif,
+            #[cfg(feature = "ico")]
+            ImageOutputFormat::Ico => ImageFormat::Ico,
+            #[cfg(feature = "bmp")]
+            ImageOutputFormat::Bmp => ImageFormat::Bmp,
+            #[cfg(feature = "farbfeld")]
+            ImageOutputFormat::Farbfeld => ImageFormat::Farbfeld,
+            #[cfg(feature = "tga")]
+            ImageOutputFormat::Tga => ImageFormat::Tga,
+            #[cfg(feature = "avif")]
+            ImageOutputFormat::Avif => ImageFormat::Avif,
         }
     }
 }

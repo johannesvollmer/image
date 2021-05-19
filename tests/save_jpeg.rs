@@ -3,13 +3,14 @@
 extern crate image;
 
 use image::{ImageOutputFormat, ImageFormat};
+use std::convert::TryFrom;
 
 #[test]
 fn jqeg_qualitys() {
     let img = image::open("tests/images/tiff/testsuite/mandrill.tiff").unwrap();
 
     let mut default = vec![];
-    img.write_to(&mut default, ImageFormat::Jpeg).unwrap();
+    img.write_to(&mut default, ImageOutputFormat::try_from(ImageFormat::Jpeg).unwrap()).unwrap();
     assert_eq!(&[255, 216], &default[..2]);
 
     let mut small = vec![];

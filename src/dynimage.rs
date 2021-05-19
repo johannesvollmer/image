@@ -1,5 +1,5 @@
 use std::io;
-use std::io::{Write, Seek};
+use std::io::{Write, Seek, BufWriter};
 use std::path::Path;
 use std::u32;
 
@@ -37,6 +37,7 @@ use crate::io::free_functions;
 use crate::imageops;
 use crate::math::resize_dimensions;
 use crate::traits::Pixel;
+use std::convert::TryInto;
 
 /// A Dynamic Image
 #[derive(Clone, Debug, Hash, PartialEq, Eq)]
@@ -899,117 +900,14 @@ impl DynamicImage {
     /// If your ```w``` is not seekable,
     /// you can write to a `Cursor::new(Vec::<u8>::new())` first,
     /// which can then be written to a file.
-    pub fn write_to<W: Write + Seek, F: Into<ImageOutputFormat>>(
-        &self,
-        w: &mut W,
-        format: F,
+    pub fn write_to<W: Write + Seek>(
+        &self, w: &mut W,
+        format: ImageOutputFormat,
     ) -> ImageResult<()> {
-        #[allow(unused_variables)]
-        // When no features are supported
-        let w = w;
-        #[allow(unused_variables,unused_mut)]
-        let mut bytes = self.as_bytes();
-        #[allow(unused_variables)]
         let (width, height) = self.dimensions();
-        #[allow(unused_variables,unused_mut)]
-        let mut color = self.color();
-        let format = format.into();
-
-        #[allow(deprecated)]
-        match format {
-            #[cfg(feature = "png")]
-            image::ImageOutputFormat::Png => {
-                let p = png::PngEncoder::new(w);
-                let converted;
-                match *self {
-                    DynamicImage::ImageBgra8(_) => {
-                        converted = self.to_rgba().into_raw();
-                        bytes = &converted;
-                        color = color::ColorType::Rgba8;
-                    }
-                    DynamicImage::ImageBgr8(_) => {
-                        converted = self.to_rgb().into_raw();
-                        bytes = &converted;
-                        color = color::ColorType::Rgb8;
-                    }
-                    _ => {}
-                }
-                p.encode(&bytes, width, height, color)?;
-                Ok(())
-            }
-
-            #[cfg(feature = "pnm")]
-            image::ImageOutputFormat::Pnm(subtype) => {
-                let mut p = pnm::PnmEncoder::new(w).with_subtype(subtype);
-                let converted;
-                match *self {
-                    DynamicImage::ImageBgra8(_) => {
-                        converted = self.to_rgba().into_raw();
-                        bytes = &converted;
-                        color = color::ColorType::Rgba8;
-                    }
-                    DynamicImage::ImageBgr8(_) => {
-                        converted = self.to_rgb().into_raw();
-                        bytes = &converted;
-                        color = color::ColorType::Rgb8;
-                    }
-                    _ => {}
-                }
-                p.encode(bytes, width, height, color)?;
-                Ok(())
-            }
-
-            #[cfg(feature = "jpeg")]
-            image::ImageOutputFormat::Jpeg(quality) => {
-                let j = jpeg::JpegEncoder::new_with_quality(w, quality);
-                j.write_image(bytes, width, height, color)?;
-                Ok(())
-            }
-
-            #[cfg(feature = "gif")]
-            image::ImageOutputFormat::Gif => {
-                let mut g = gif::GifEncoder::new(w);
-                g.encode_frame(crate::animation::Frame::new(self.to_rgba()))?;
-                Ok(())
-            }
-
-            #[cfg(feature = "ico")]
-            image::ImageOutputFormat::Ico => {
-                let i = ico::IcoEncoder::new(w);
-                i.encode(bytes, width, height, color)?;
-                Ok(())
-            }
-
-            #[cfg(feature = "bmp")]
-            image::ImageOutputFormat::Bmp => {
-                let mut b = bmp::BmpEncoder::new(w);
-                b.encode(bytes, width, height, color)?;
-                Ok(())
-            }
-
-            #[cfg(feature = "farbfeld")]
-            image::ImageOutputFormat::Farbfeld => {
-                farbfeld::FarbfeldEncoder::new(w).write_image(bytes, width, height, color)
-            }
-
-            #[cfg(feature = "tga")]
-            image::ImageOutputFormat::Tga => {
-                tga::TgaEncoder::new(w).write_image(bytes, width, height, color)
-            }
-
-            #[cfg(feature = "avif")]
-            image::ImageOutputFormat::Avif => {
-                avif::AvifEncoder::new(w).write_image(bytes, width, height, color)
-            }
-
-            image::ImageOutputFormat::Unsupported(msg) => {
-                Err(ImageError::Unsupported(UnsupportedError::from_format_and_kind(
-                    ImageFormatHint::Unknown,
-                    UnsupportedErrorKind::Format(ImageFormatHint::Name(msg)))))
-            },
-
-            image::ImageOutputFormat::__NonExhaustive(marker) => match marker._private {},
-        }
+        crate::io::free_functions::save_with_format(
+            w, self.as_bytes(), width, height, self.color(), format
+        )
     }
 
     /// Saves the buffer to a file at the path specified.
@@ -1029,7 +927,7 @@ impl DynamicImage {
     ///
     /// See [`save_buffer_with_format`](fn.save_buffer_with_format.html) for
     /// supported types.
-    pub fn save_with_format<Q>(&self, path: Q, format: ImageFormat) -> ImageResult<()>
+    pub fn save_with_format<Q>(&self, path: Q, format: ImageOutputFormat) -> ImageResult<()>
     where
         Q: AsRef<Path>,
     {
@@ -1256,8 +1154,8 @@ where
 /// The image format is derived from the file extension. The buffer is assumed to have
 /// the correct format according to the specified color type.
 
-/// This will lead to corrupted files if the buffer contains malformed data. Currently only
-/// jpeg, png, ico, pnm, bmp and tiff files are supported.
+/// This will lead to corrupted files if the buffer contains malformed data.
+/// Inspect `ImageOutputType` to see what types are supported.
 pub fn save_buffer<P>(
     path: P,
     buf: &[u8],
@@ -1269,7 +1167,7 @@ where
     P: AsRef<Path>,
 {
     // thin wrapper function to strip generics before calling save_buffer_impl
-    free_functions::save_buffer_impl(path.as_ref(), buf, width, height, color)
+    free_functions::save_to_file_detect_format(path.as_ref(), buf, width, height, color)
 }
 
 /// Saves the supplied buffer to a file at the path specified
@@ -1278,21 +1176,44 @@ where
 /// The buffer is assumed to have the correct format according
 /// to the specified color type.
 /// This will lead to corrupted files if the buffer contains
-/// malformed data. Currently only jpeg, png, ico, bmp and
-/// tiff files are supported.
+/// malformed data.
+/// Inspect `ImageOutputType` to see what types are supported.
 pub fn save_buffer_with_format<P>(
     path: P,
     buf: &[u8],
     width: u32,
     height: u32,
     color: color::ColorType,
-    format: ImageFormat,
+    format: ImageOutputFormat,
 ) -> ImageResult<()>
 where
     P: AsRef<Path>,
 {
     // thin wrapper function to strip generics
-    free_functions::save_buffer_with_format_impl(path.as_ref(), buf, width, height, color, format)
+    free_functions::save_to_file_with_format(path.as_ref(), buf, width, height, color, format)
+}
+
+/// Saves the supplied buffer to a file or any other destination with the specified format.
+///
+/// The buffer is assumed to have the correct format according
+/// to the specified color type.
+/// This will lead to corrupted files if the buffer contains
+/// malformed data.
+/// Inspect `ImageOutputType` to see what types are supported.
+/// The writer should be buffered.
+pub fn save_buffer_with_format_to<W>(
+    write: W,
+    buf: &[u8],
+    width: u32,
+    height: u32,
+    color: color::ColorType,
+    format: ImageOutputFormat,
+) -> ImageResult<()>
+where
+    W: Write + Seek,
+{
+    // thin wrapper function to strip generics
+    free_functions::save_with_format(write, buf, width, height, color, format)
 }
 
 /// Create a new image from a byte slice

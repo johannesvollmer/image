@@ -1,5 +1,5 @@
 use std::fs::File;
-use std::io::{BufRead, BufReader, BufWriter, Seek};
+use std::io::{BufRead, BufReader, BufWriter, Seek, Write};
 use std::path::Path;
 use std::u32;
 
@@ -30,13 +30,14 @@ use crate::codecs::farbfeld;
 #[cfg(any(feature = "avif-encoder", feature = "avif-decoder"))]
 use crate::codecs::avif;
 
-use crate::color;
+use crate::{color, ImageOutputFormat};
 use crate::image;
 use crate::dynimage::DynamicImage;
-use crate::error::{ImageError, ImageFormatHint, ImageResult};
+use crate::error::{ImageError, ImageFormatHint, ImageResult, UnsupportedError, UnsupportedErrorKind};
 use crate::image::ImageFormat;
 #[allow(unused_imports)]  // When no features are supported
 use crate::image::{ImageDecoder, ImageEncoder};
+use std::convert::TryFrom;
 
 pub(crate) fn open_impl(path: &Path) -> ImageResult<DynamicImage> {
     let fin = match File::open(path) {
@@ -137,73 +138,91 @@ pub(crate) fn image_dimensions_with_format_impl<R: BufRead + Seek>(fin: R, forma
     })
 }
 
-#[allow(unused_variables)]
-// Most variables when no features are supported
-pub(crate) fn save_buffer_impl(
+pub(crate) fn save_to_file_detect_format(
     path: &Path,
     buf: &[u8],
     width: u32,
     height: u32,
     color: color::ColorType,
 ) -> ImageResult<()> {
-    let format =  ImageFormat::from_path(path)?;
-    save_buffer_with_format_impl(path, buf, width, height, color, format)
+    // TODO check != Format::Unsupported
+    // FIXME this looses PPM subtype? implement ImageOutputFormat::from_extension()
+    let format = ImageOutputFormat::try_from(ImageFormat::from_path(path)?)?;
+    save_to_file_with_format(path, buf, width, height, color, format)
+}
+
+pub(crate) fn save_to_file_with_format(
+    path: &Path,
+    buf: &[u8],
+    width: u32,
+    height: u32,
+    color: color::ColorType,
+    format: ImageOutputFormat,
+) -> ImageResult<()> {
+    let out = &mut BufWriter::new(File::create(path)?); // always seekable
+    save_with_format(out, buf, width, height, color, format)
 }
 
 #[allow(unused_variables)]
 // Most variables when no features are supported
-pub(crate) fn save_buffer_with_format_impl(
-    path: &Path,
+pub(crate) fn save_with_format(
+    out: impl Write + Seek,
     buf: &[u8],
     width: u32,
     height: u32,
     color: color::ColorType,
-    format: ImageFormat,
+    format: ImageOutputFormat,
 ) -> ImageResult<()> {
-    let fout = &mut BufWriter::new(File::create(path)?); // always seekable
+    let mut out = out;
+    let out = &mut out;
 
     match format {
         #[cfg(feature = "gif")]
-        image::ImageFormat::Gif => gif::GifEncoder::new(fout).encode(buf, width, height, color),
+        image::ImageOutputFormat::Gif => gif::GifEncoder::new(out).encode(buf, width, height, color),
         #[cfg(feature = "ico")]
-        image::ImageFormat::Ico => ico::IcoEncoder::new(fout).write_image(buf, width, height, color),
+        image::ImageOutputFormat::Ico => ico::IcoEncoder::new(out).write_image(buf, width, height, color),
         #[cfg(feature = "jpeg")]
-        image::ImageFormat::Jpeg => jpeg::JpegEncoder::new(fout).write_image(buf, width, height, color),
+        image::ImageOutputFormat::Jpeg(quality) => jpeg::JpegEncoder::new_with_quality(&mut out, quality).write_image(buf, width, height, color),
         #[cfg(feature = "png")]
-        image::ImageFormat::Png => png::PngEncoder::new(fout).write_image(buf, width, height, color),
+        image::ImageOutputFormat::Png => png::PngEncoder::new(out).write_image(buf, width, height, color),
         #[cfg(feature = "pnm")]
-        image::ImageFormat::Pnm => {
-            let ext = path.extension()
-            .and_then(|s| s.to_str())
-            .map_or("".to_string(), |s| s.to_ascii_lowercase());
-            match &*ext {
-                "pbm" => pnm::PnmEncoder::new(fout)
+        image::ImageOutputFormat::Pnm(subtype) => {
+            // let ext = path.extension()
+            // .and_then(|s| s.to_str())
+            // .map_or("".to_string(), |s| s.to_ascii_lowercase());
+            match subtype {
+                "pbm" => pnm::PnmEncoder::new(out)
                     .with_subtype(pnm::PNMSubtype::Bitmap(pnm::SampleEncoding::Binary))
                     .write_image(buf, width, height, color),
-                "pgm" => pnm::PnmEncoder::new(fout)
+                "pgm" => pnm::PnmEncoder::new(out)
                     .with_subtype(pnm::PNMSubtype::Graymap(pnm::SampleEncoding::Binary))
                     .write_image(buf, width, height, color),
-                "ppm" => pnm::PnmEncoder::new(fout)
+                "ppm" => pnm::PnmEncoder::new(out)
                     .with_subtype(pnm::PNMSubtype::Pixmap(pnm::SampleEncoding::Binary))
                     .write_image(buf, width, height, color),
-                "pam" => pnm::PnmEncoder::new(fout).write_image(buf, width, height, color),
+                "pam" => pnm::PnmEncoder::new(out).write_image(buf, width, height, color),
                 _ => Err(ImageError::Unsupported(ImageFormatHint::Exact(format).into())), // Unsupported Pnm subtype.
             }
         },
         #[cfg(feature = "farbfeld")]
-        image::ImageFormat::Farbfeld => farbfeld::FarbfeldEncoder::new(fout).write_image(buf, width, height, color),
+        image::ImageOutputFormat::Farbfeld => farbfeld::FarbfeldEncoder::new(out).write_image(buf, width, height, color),
         #[cfg(feature = "avif-encoder")]
-        image::ImageFormat::Avif => avif::AvifEncoder::new(fout).write_image(buf, width, height, color),
+        image::ImageOutputFormat::Avif => avif::AvifEncoder::new(out).write_image(buf, width, height, color),
         // #[cfg(feature = "hdr")]
         // image::ImageFormat::Hdr => hdr::HdrEncoder::new(fout).encode(&[Rgb<f32>], width, height), // usize
         #[cfg(feature = "bmp")]
-        image::ImageFormat::Bmp => bmp::BmpEncoder::new(fout).write_image(buf, width, height, color),
+        image::ImageOutputFormat::Bmp => bmp::BmpEncoder::new(out).write_image(buf, width, height, color),
         #[cfg(feature = "tiff")]
-        image::ImageFormat::Tiff => tiff::TiffEncoder::new(fout)
+        image::ImageOutputFormat::Tiff => tiff::TiffEncoder::new(out)
             .write_image(buf, width, height, color),
         #[cfg(feature = "tga")]
-        image::ImageFormat::Tga => tga::TgaEncoder::new(fout).write_image(buf, width, height, color),
-        format => Err(ImageError::Unsupported(ImageFormatHint::Exact(format).into())),
+        image::ImageOutputFormat::Tga => tga::TgaEncoder::new(out).write_image(buf, width, height, color),
+
+        unsupported_output_format => {
+            let format = ImageFormat::from(unsupported_output_format);
+            Err(ImageError::Unsupported(UnsupportedError::from(ImageFormatHint::Exact(format))))
+        }
+
     }
 }
 

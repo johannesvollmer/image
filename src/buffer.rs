@@ -8,12 +8,14 @@ use std::slice::{ChunksExact, ChunksExactMut};
 
 use crate::color::{FromColor, Luma, LumaA, Rgb, Rgba, Bgr, Bgra};
 use crate::flat::{FlatSamples, SampleLayout};
-use crate::dynimage::{save_buffer, save_buffer_with_format};
+use crate::dynimage::{save_buffer, save_buffer_with_format, save_buffer_with_format_to};
 use crate::error::ImageResult;
 use crate::image::{GenericImage, GenericImageView, ImageFormat};
 use crate::math::Rect;
 use crate::traits::{EncodableLayout, Pixel};
 use crate::utils::expand_packed;
+use crate::ImageOutputFormat;
+use std::io::{Write, Seek};
 
 /// Iterate over pixel refs.
 pub struct Pixels<'a, P: Pixel + 'a>
@@ -910,6 +912,26 @@ where
             <P as Pixel>::COLOR_TYPE,
         )
     }
+
+    /// Saves the buffer to a file or any other destination.
+    ///
+    /// The image format is derived from the file extension.
+    /// Currently only jpeg and png files are supported.
+    /// The writer should be buffered
+    pub fn save_to<W>(&self, write: W, format: ImageOutputFormat) -> ImageResult<()>
+    where
+        W: Write + Seek,
+    {
+        // This is valid as the subpixel is u8.
+        save_buffer_with_format_to(
+            write,
+            self.as_bytes(),
+            self.width(),
+            self.height(),
+            <P as Pixel>::COLOR_TYPE,
+            format
+        )
+    }
 }
 
 impl<P, Container> ImageBuffer<P, Container>
@@ -923,7 +945,7 @@ where
     ///
     /// See [`save_buffer_with_format`](fn.save_buffer_with_format.html) for
     /// supported types.
-    pub fn save_with_format<Q>(&self, path: Q, format: ImageFormat) -> ImageResult<()>
+    pub fn save_with_format<Q>(&self, path: Q, format: ImageOutputFormat) -> ImageResult<()>
     where
         Q: AsRef<Path>,
     {
