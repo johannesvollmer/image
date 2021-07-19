@@ -11,16 +11,18 @@ use crate::traits::{Pixel, Primitive};
 use crate::utils::clamp;
 use crate::ImageBuffer;
 
-type Subpixel<I> = <<I as GenericImageView>::Pixel as Pixel>::Subpixel;
+type Subpixel<I> = <<I as GenericImageView>::Pixel as Pixel>::Sample;
 
 /// Convert the supplied image to grayscale
 pub fn grayscale<I: GenericImageView>(image: &I) -> ImageBuffer<Luma<Subpixel<I>>, Vec<Subpixel<I>>>
 where
-    Subpixel<I>: 'static,
+    // Subpixel<I>: 'static,
     <Subpixel<I> as Num>::FromStrRadixErr: 'static,
+    // Luma<<<I as GenericImageView>::Pixel as Pixel>::Subpixel>: Pixel
+    Luma<Subpixel<I>>: Pixel,
 {
     let (width, height) = image.dimensions();
-    let mut out = ImageBuffer::new(width, height);
+    let mut out: ImageBuffer<Luma<Subpixel<I>>, Vec<Subpixel<I>>> = ImageBuffer::new(width, height);
 
     for y in 0..height {
         for x in 0..width {
@@ -39,10 +41,7 @@ pub fn invert<I: GenericImage>(image: &mut I) {
 
     for y in 0..height {
         for x in 0..width {
-            let mut p = image.get_pixel(x, y);
-            p.invert();
-
-            image.put_pixel(x, y, p);
+            image.get_pixel_mut(x, y).invert();
         }
     }
 }
@@ -55,7 +54,7 @@ pub fn invert<I: GenericImage>(image: &mut I) {
 pub fn contrast<I, P, S>(image: &I, contrast: f32) -> ImageBuffer<P, Vec<S>>
 where
     I: GenericImageView<Pixel = P>,
-    P: Pixel<Subpixel = S> + 'static,
+    P: Pixel<Sample= S> + 'static,
     S: Primitive + 'static,
 {
     let (width, height) = image.dimensions();
@@ -95,7 +94,7 @@ where
 {
     let (width, height) = image.dimensions();
 
-    let max = <<I::Pixel as Pixel>::Subpixel as Bounded>::max_value();
+    let max = <<I::Pixel as Pixel>::Sample as Bounded>::max_value();
     let max: f32 = NumCast::from(max).unwrap();
 
     let percent = ((100.0 + contrast) / 100.0).powi(2);
@@ -124,7 +123,7 @@ where
 pub fn brighten<I, P, S>(image: &I, value: i32) -> ImageBuffer<P, Vec<S>>
 where
     I: GenericImageView<Pixel = P>,
-    P: Pixel<Subpixel = S> + 'static,
+    P: Pixel<Sample= S> + 'static,
     S: Primitive + 'static,
 {
     let (width, height) = image.dimensions();
@@ -163,7 +162,7 @@ where
 {
     let (width, height) = image.dimensions();
 
-    let max = <<I::Pixel as Pixel>::Subpixel as Bounded>::max_value();
+    let max = <<I::Pixel as Pixel>::Sample as Bounded>::max_value();
     let max: i32 = NumCast::from(max).unwrap();
 
     for y in 0..height {
@@ -192,7 +191,7 @@ where
 pub fn huerotate<I, P, S>(image: &I, value: i32) -> ImageBuffer<P, Vec<S>>
 where
     I: GenericImageView<Pixel = P>,
-    P: Pixel<Subpixel = S> + 'static,
+    P: Pixel<Sample= S> + 'static,
     S: Primitive + 'static,
 {
     let (width, height) = image.dimensions();
@@ -444,7 +443,7 @@ impl ColorMap for color_quant::NeuQuant {
 }
 
 /// Floyd-Steinberg error diffusion
-fn diffuse_err<P: Pixel<Subpixel = u8>>(pixel: &mut P, error: [i16; 3], factor: i16) {
+fn diffuse_err<P: Pixel<Sample= u8>>(pixel: &mut P, error: [i16; 3], factor: i16) {
     for (e, c) in error.iter().zip(pixel.channels_mut().iter_mut()) {
         *c = match <i16 as From<_>>::from(*c) + e * factor / 16 {
             val if val < 0 => 0,
@@ -475,7 +474,7 @@ macro_rules! do_dithering(
 pub fn dither<Pix, Map>(image: &mut ImageBuffer<Pix, Vec<u8>>, color_map: &Map)
 where
     Map: ColorMap<Color = Pix> + ?Sized,
-    Pix: Pixel<Subpixel = u8> + 'static,
+    Pix: Pixel<Sample= u8> + 'static,
 {
     let (width, height) = image.dimensions();
     let mut err: [i16; 3] = [0; 3];
@@ -516,7 +515,7 @@ pub fn index_colors<Pix, Map>(
 ) -> ImageBuffer<Luma<u8>, Vec<u8>>
 where
     Map: ColorMap<Color = Pix> + ?Sized,
-    Pix: Pixel<Subpixel = u8> + 'static,
+    Pix: Pixel<Sample= u8> + 'static,
 {
     let mut indices = ImageBuffer::new(image.width(), image.height());
     for (pixel, idx) in image.pixels().zip(indices.pixels_mut()) {

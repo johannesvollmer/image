@@ -217,6 +217,191 @@ impl From<ColorType> for ExtendedColorType {
     }
 }
 
+
+macro_rules! impl_colors {
+    {
+        $name: ident,
+        #[$doc:meta],
+        $name_string: literal,
+        $channel_count: literal,
+        $has_alpha: literal,
+        $(
+            $primitive: ident:
+            $color_type: ident
+        ),*
+    }
+    =>
+    {
+
+        // define the new type, wrapping an array
+        #[$doc]
+        #[repr(C)]
+        #[derive(PartialEq, Eq, Clone, Debug, Copy, Hash)]
+        pub struct $name <T: Primitive> (
+            pub [T; $channel_count]
+        );
+
+        $( // repeat: impl Pixel for all primitive types
+
+            impl Pixel for $name <$primitive> {
+
+                type Sample = $primitive;
+                const CHANNEL_COUNT: u8 = $channel_count;
+                const COLOR_MODEL: &'static str = $name_string;
+                const COLOR_TYPE: ColorType = $color_type;
+
+                #[inline(always)]
+                fn channels(&self) -> &[$primitive] { &self.0 }
+
+                #[inline(always)]
+                fn channels_mut(&mut self) -> &mut [$primitive] { &mut self.0 }
+
+                fn channels4(&self) -> ($primitive,$primitive,$primitive,$primitive) {
+                    let mut channels = [$primitive::max_value(); 4];
+                    channels[0..Self::CHANNEL_COUNT].copy_from_slice(&self.0);
+                    (channels[0], channels[1], channels[2], channels[3])
+                }
+
+                fn from_channels(a: $primitive, b: $primitive, c: $primitive, d: $primitive,) -> Self {
+                    *Self::from_slice(&[a, b, c, d][..Self::CHANNEL_COUNT])
+                }
+
+                fn from_slice(slice: &[$primitive]) -> &Self {
+                    assert_eq!(slice.len(), Self::CHANNEL_COUNT);
+                    unsafe { &*(slice.as_ptr() as *const Self) }
+                }
+
+                fn from_slice_mut(slice: &mut [$primitive]) -> &mut Self {
+                    assert_eq!(slice.len(), Self::CHANNEL_COUNT);
+                    unsafe { &mut *(slice.as_mut_ptr() as *mut Self) }
+                }
+
+                fn to_rgb(&self) -> Rgb<$primitive> {
+                    let mut pix = Rgb([Zero::zero(), Zero::zero(), Zero::zero()]);
+                    pix.from_color(self);
+                    pix
+                }
+
+                fn to_bgr(&self) -> Bgr<$primitive> {
+                    let mut pix = Bgr([Zero::zero(), Zero::zero(), Zero::zero()]);
+                    pix.from_color(self);
+                    pix
+                }
+
+                fn to_rgba(&self) -> Rgba<$primitive> {
+                    let mut pix = Rgba([Zero::zero(), Zero::zero(), Zero::zero(), Zero::zero()]);
+                    pix.from_color(self);
+                    pix
+                }
+
+                fn to_bgra(&self) -> Bgra<$primitive> {
+                    let mut pix = Bgra([Zero::zero(), Zero::zero(), Zero::zero(), Zero::zero()]);
+                    pix.from_color(self);
+                    pix
+                }
+
+                fn to_luma(&self) -> Luma<$primitive> {
+                    let mut pix = Luma([Zero::zero()]);
+                    pix.from_color(self);
+                    pix
+                }
+
+                fn to_luma_alpha(&self) -> LumaA<$primitive> {
+                    let mut pix = LumaA([Zero::zero(), Zero::zero()]);
+                    pix.from_color(self);
+                    pix
+                }
+
+                fn map<F>(& self, f: F) -> Self where F: FnMut($primitive) -> $primitive {
+                    let mut this = (*self).clone();
+                    this.apply(f);
+                    this
+                }
+
+                fn apply<F>(&mut self, mut f: F) where F: FnMut($primitive) -> $primitive {
+                    for v in &mut self.0 {
+                        *v = f(*v)
+                    }
+                }
+
+                fn map_with_alpha<F, G>(&self, f: F, g: G) -> Self where F: FnMut($primitive) -> $primitive, G: FnMut($primitive) -> $primitive {
+                    let mut this = (*self).clone();
+                    this.apply_with_alpha(f, g);
+                    this
+                }
+
+                fn apply_with_alpha<F, G>(&mut self, mut f: F, mut g: G) where F: FnMut($primitive) -> $primitive, G: FnMut($primitive) -> $primitive {
+                    const ALPHA: usize = $channel_count - ($has_alpha as usize);
+                    for v in self.0[..ALPHA].iter_mut() {
+                        *v = f(*v)
+                    }
+                    // The branch of this match is `const`. This way ensures that no subexpression fails the
+                    // `const_err` lint (the expression `self.0[ALPHA]` would).
+                    if let Some(v) = self.0.get_mut(ALPHA) {
+                        *v = g(*v)
+                    }
+                }
+
+                fn map2<F>(&self, other: &Self, f: F) -> Self where F: FnMut($primitive, $primitive) -> $primitive {
+                    let mut this = (*self).clone();
+                    this.apply2(other, f);
+                    this
+                }
+
+                fn apply2<F>(&mut self, other: &Self, mut f: F) where F: FnMut($primitive, $primitive) -> $primitive {
+                    for (a, &b) in self.0.iter_mut().zip(other.0.iter()) {
+                        *a = f(*a, b)
+                    }
+                }
+
+                fn invert(&mut self) {
+                    Invert::invert(self)
+                }
+
+                fn blend(&mut self, other: &Self) {
+                    Blend::blend(self, other)
+                }
+            }
+
+        )* // end: repeat for all color types
+    }
+}
+
+use ColorType::*;
+// FIXME: need to change all calls to `u8/u16 :: max_value` to something being either `1.0` or so??
+
+impl_colors! {
+    Rgb, #[doc="Red, green, and blue. No alpha. Can contain three `u8`, `u16` or `f32` values."],
+    "RGB", 3, false,
+    u8:Rgb8, u16:Rgb16, f32:Rgb32F
+}
+impl_colors! {
+    Rgba, #[doc="Red, green, blue and alpha. Can contain four `u8`, `u16` or `f32` values."],
+     "RGBA", 4, true,
+     u8:Rgba8, u16:Rgba16, f32:Rgba32F
+}
+impl_colors! {
+    Bgr, #[doc="Red, green, and blue. No alpha. Can contain three `u8` or `u16` values."],
+     "BGR", 3, false,
+     u8:Bgr8
+}
+impl_colors! {
+    Bgra, #[doc="Red, green, blue and alpha. Can contain four `u8` or `u16` values."],
+     "BGRA", 4, true,
+     u8:Bgra8
+}
+impl_colors! {
+    Luma, #[doc="Luminance. No alpha. Can contain one `u8` or `u16` value."],
+     "Y", 1, false,
+     u8:L8, u16:L16
+}
+impl_colors! {
+    LumaA, #[doc="Luminance and alpha. Can contain two `u8` or `u16` values."],
+     "YA", 2, true,
+     u8:La8, u16:La16
+}
+
+
 macro_rules! define_colors {
     {$(
         $ident:ident,
@@ -389,14 +574,6 @@ impl<T: Primitive + 'static> From<[T; $channels]> for $ident<T> {
     }
 }
 
-define_colors! {
-    Rgb, 3, 0, "RGB", ColorType::Rgb8, ColorType::Rgb16, #[doc = "RGB colors"];
-    Bgr, 3, 0, "BGR", ColorType::Bgr8, ColorType::Bgr8, #[doc = "BGR colors"];
-    Luma, 1, 0, "Y", ColorType::L8, ColorType::L16, #[doc = "Grayscale colors"];
-    Rgba, 4, 1, "RGBA", ColorType::Rgba8, ColorType::Rgba16, #[doc = "RGB colors + alpha channel"];
-    Bgra, 4, 1, "BGRA", ColorType::Bgra8, ColorType::Bgra8, #[doc = "BGR colors + alpha channel"];
-    LumaA, 2, 1, "YA", ColorType::La8, ColorType::La16, #[doc = "Grayscale colors + alpha channel"];
-}
 
 /// Provides color conversions for the different pixel types.
 pub trait FromColor<Other> {

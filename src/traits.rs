@@ -26,6 +26,12 @@ impl EncodableLayout for [u16] {
     }
 }
 
+impl EncodableLayout for [f32] {
+    fn as_bytes(&self) -> &[u8] {
+        bytemuck::cast_slice(self)
+    }
+}
+
 /// Primitive trait from old stdlib
 pub trait Primitive: Copy + NumCast + Num + PartialOrd<Self> + Clone + Bounded {}
 
@@ -66,6 +72,10 @@ impl Enlargeable for u16 {
 impl Enlargeable for u32 {
     type Larger = u64;
 }
+impl Enlargeable for f32 {
+    type Larger = f64;
+    fn clamp_from(n: Self::Larger) -> Self { n as f32 }
+}
 
 /// Linear interpolation without involving floating numbers.
 pub trait Lerp: Bounded + NumCast {
@@ -99,15 +109,26 @@ impl Lerp for u32 {
     type Ratio = f64;
 }
 
+impl Lerp for f32 {
+    type Ratio = f32;
+}
+
+/// One value within a pixel. For example either red, or green, or blue.
+pub trait Sample: Primitive {
+    fn invert(&self) -> Self;
+}
+
 /// A generalized pixel.
 ///
 /// A pixel object is usually not used standalone but as a view into an image buffer.
 pub trait Pixel: Copy + Clone {
+
     /// The underlying subpixel type.
-    type Subpixel: Primitive;
+    type Sample: Sample; // TODO rename everything to sample? otherwise rename Sample trait to Subpixel.
 
     /// The number of channels of this pixel type.
     const CHANNEL_COUNT: u8;
+
     /// Returns the number of channels of this pixel type.
     #[deprecated(note="please use CHANNEL_COUNT associated constant")]
     fn channel_count() -> u8 {
@@ -115,14 +136,15 @@ pub trait Pixel: Copy + Clone {
     }
 
     /// Returns the components as a slice.
-    fn channels(&self) -> &[Self::Subpixel];
+    fn channels(&self) -> &[Self::Sample];
 
     /// Returns the components as a mutable slice
-    fn channels_mut(&mut self) -> &mut [Self::Subpixel];
+    fn channels_mut(&mut self) -> &mut [Self::Sample];
 
     /// A string that can help to interpret the meaning each channel
     /// See [gimp babl](http://gegl.org/babl/).
     const COLOR_MODEL: &'static str;
+
     /// Returns a string that can help to interpret the meaning each channel
     /// See [gimp babl](http://gegl.org/babl/).
     #[deprecated(note="please use COLOR_MODEL associated constant")]
@@ -132,6 +154,7 @@ pub trait Pixel: Copy + Clone {
 
     /// ColorType for this pixel format
     const COLOR_TYPE: ColorType;
+
     /// Returns the ColorType for this pixel format
     #[deprecated(note="please use COLOR_TYPE associated constant")]
     fn color_type() -> ColorType {
@@ -145,10 +168,10 @@ pub trait Pixel: Copy + Clone {
     fn channels4(
         &self,
     ) -> (
-        Self::Subpixel,
-        Self::Subpixel,
-        Self::Subpixel,
-        Self::Subpixel,
+        Self::Sample,
+        Self::Sample,
+        Self::Sample,
+        Self::Sample,
     );
 
     /// Construct a pixel from the 4 channels a, b, c and d.
@@ -156,70 +179,70 @@ pub trait Pixel: Copy + Clone {
     ///
     /// TODO deprecate
     fn from_channels(
-        a: Self::Subpixel,
-        b: Self::Subpixel,
-        c: Self::Subpixel,
-        d: Self::Subpixel,
+        a: Self::Sample,
+        b: Self::Sample,
+        c: Self::Sample,
+        d: Self::Sample,
     ) -> Self;
 
     /// Returns a view into a slice.
     ///
     /// Note: The slice length is not checked on creation. Thus the caller has to ensure
     /// that the slice is long enough to prevent panics if the pixel is used later on.
-    fn from_slice(slice: &[Self::Subpixel]) -> &Self;
+    fn from_slice(slice: &[Self::Sample]) -> &Self;
 
     /// Returns mutable view into a mutable slice.
     ///
     /// Note: The slice length is not checked on creation. Thus the caller has to ensure
     /// that the slice is long enough to prevent panics if the pixel is used later on.
-    fn from_slice_mut(slice: &mut [Self::Subpixel]) -> &mut Self;
+    fn from_slice_mut(slice: &mut [Self::Sample]) -> &mut Self;
 
     /// Convert this pixel to RGB
-    fn to_rgb(&self) -> Rgb<Self::Subpixel>;
+    fn to_rgb(&self) -> Rgb<Self::Sample>;
 
     /// Convert this pixel to RGB with an alpha channel
-    fn to_rgba(&self) -> Rgba<Self::Subpixel>;
+    fn to_rgba(&self) -> Rgba<Self::Sample>;
 
     /// Convert this pixel to luma
-    fn to_luma(&self) -> Luma<Self::Subpixel>;
+    fn to_luma(&self) -> Luma<Self::Sample>;
 
     /// Convert this pixel to luma with an alpha channel
-    fn to_luma_alpha(&self) -> LumaA<Self::Subpixel>;
+    fn to_luma_alpha(&self) -> LumaA<Self::Sample>;
 
     /// Convert this pixel to BGR
-    fn to_bgr(&self) -> Bgr<Self::Subpixel>;
+    fn to_bgr(&self) -> Bgr<Self::Sample>;
 
     /// Convert this pixel to BGR with an alpha channel
-    fn to_bgra(&self) -> Bgra<Self::Subpixel>;
+    fn to_bgra(&self) -> Bgra<Self::Sample>;
 
     /// Apply the function ```f``` to each channel of this pixel.
     fn map<F>(&self, f: F) -> Self
     where
-        F: FnMut(Self::Subpixel) -> Self::Subpixel;
+        F: FnMut(Self::Sample) -> Self::Sample;
 
     /// Apply the function ```f``` to each channel of this pixel.
     fn apply<F>(&mut self, f: F)
     where
-        F: FnMut(Self::Subpixel) -> Self::Subpixel;
+        F: FnMut(Self::Sample) -> Self::Sample;
 
     /// Apply the function ```f``` to each channel except the alpha channel.
     /// Apply the function ```g``` to the alpha channel.
     fn map_with_alpha<F, G>(&self, f: F, g: G) -> Self
     where
-        F: FnMut(Self::Subpixel) -> Self::Subpixel,
-        G: FnMut(Self::Subpixel) -> Self::Subpixel;
+        F: FnMut(Self::Sample) -> Self::Sample,
+        G: FnMut(Self::Sample) -> Self::Sample;
 
     /// Apply the function ```f``` to each channel except the alpha channel.
     /// Apply the function ```g``` to the alpha channel. Works in-place.
     fn apply_with_alpha<F, G>(&mut self, f: F, g: G)
     where
-        F: FnMut(Self::Subpixel) -> Self::Subpixel,
-        G: FnMut(Self::Subpixel) -> Self::Subpixel;
+        F: FnMut(Self::Sample) -> Self::Sample,
+        G: FnMut(Self::Sample) -> Self::Sample;
 
     /// Apply the function ```f``` to each channel except the alpha channel.
     fn map_without_alpha<F>(&self, f: F) -> Self
     where
-        F: FnMut(Self::Subpixel) -> Self::Subpixel,
+        F: FnMut(Self::Sample) -> Self::Sample,
     {
         let mut this = *self;
         this.apply_with_alpha(f, |x| x);
@@ -230,7 +253,7 @@ pub trait Pixel: Copy + Clone {
     /// Works in place.
     fn apply_without_alpha<F>(&mut self, f: F)
     where
-        F: FnMut(Self::Subpixel) -> Self::Subpixel,
+        F: FnMut(Self::Sample) -> Self::Sample,
     {
         self.apply_with_alpha(f, |x| x);
     }
@@ -239,13 +262,13 @@ pub trait Pixel: Copy + Clone {
     /// ```other``` pairwise.
     fn map2<F>(&self, other: &Self, f: F) -> Self
     where
-        F: FnMut(Self::Subpixel, Self::Subpixel) -> Self::Subpixel;
+        F: FnMut(Self::Sample, Self::Sample) -> Self::Sample;
 
     /// Apply the function ```f``` to each channel of this pixel and
     /// ```other``` pairwise. Works in-place.
     fn apply2<F>(&mut self, other: &Self, f: F)
     where
-        F: FnMut(Self::Subpixel, Self::Subpixel) -> Self::Subpixel;
+        F: FnMut(Self::Sample, Self::Sample) -> Self::Sample;
 
     /// Invert this pixel
     fn invert(&mut self);
@@ -260,4 +283,17 @@ mod seals {
 
     impl EncodableLayout for [u8] {}
     impl EncodableLayout for [u16] {}
+    impl EncodableLayout for [f32] {}
+}
+
+impl Sample for u8 {
+    fn invert(&self) -> Self { Self::MAX_VALUE - *self }
+}
+
+impl Sample for u16 {
+    fn invert(&self) -> Self { Self::MAX_VALUE - *self }
+}
+
+impl Sample for f32 {
+    fn invert(&self) -> Self { 1.0 - *self } // TODO 1.0? Self::COLORSPACE.white()??
 }

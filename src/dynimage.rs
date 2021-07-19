@@ -18,7 +18,7 @@ use crate::buffer_::{
 use crate::color::{self, IntoColor};
 use crate::error::{ImageError, ImageFormatHint, ImageResult, ParameterError, ParameterErrorKind, UnsupportedError, UnsupportedErrorKind};
 use crate::flat::FlatSamples;
-use crate::image;
+use crate::{image, Rgba32FImage, Rgb32FImage};
 use crate::image::{GenericImage, GenericImageView, ImageDecoder, ImageFormat, ImageOutputFormat};
 use crate::io::free_functions;
 use crate::imageops;
@@ -57,6 +57,12 @@ pub enum DynamicImage {
 
     /// Each pixel in this image is 16-bit Rgb with alpha
     ImageRgba16(Rgba16Image),
+
+    /// Each pixel in this image is 32-bit float Rgb
+    ImageRgb32F(Rgb32FImage),
+
+    /// Each pixel in this image is 32-bit float Rgb with alpha
+    ImageRgba32F(Rgba32FImage),
 }
 
 macro_rules! dynamic_map(
@@ -72,6 +78,8 @@ macro_rules! dynamic_map(
                         DynamicImage::ImageLumaA16(ref $image) => DynamicImage::ImageLumaA16($action),
                         DynamicImage::ImageRgb16(ref $image) => DynamicImage::ImageRgb16($action),
                         DynamicImage::ImageRgba16(ref $image) => DynamicImage::ImageRgba16($action),
+                        DynamicImage::ImageRgb32F(ref $image) => DynamicImage::ImageRgb32F($action),
+                        DynamicImage::ImageRgba32F(ref $image) => DynamicImage::ImageRgba32F($action),
                 }
         );
 
@@ -87,6 +95,8 @@ macro_rules! dynamic_map(
                         DynamicImage::ImageLumaA16(ref mut $image) => DynamicImage::ImageLumaA16($action),
                         DynamicImage::ImageRgb16(ref mut $image) => DynamicImage::ImageRgb16($action),
                         DynamicImage::ImageRgba16(ref mut $image) => DynamicImage::ImageRgba16($action),
+                        DynamicImage::ImageRgb32F(ref mut $image) => DynamicImage::ImageRgb32F($action),
+                        DynamicImage::ImageRgba32F(ref mut $image) => DynamicImage::ImageRgba32F($action),
                 }
         );
 
@@ -102,6 +112,8 @@ macro_rules! dynamic_map(
                         DynamicImage::ImageLumaA16(ref $image) => $action,
                         DynamicImage::ImageRgb16(ref $image) => $action,
                         DynamicImage::ImageRgba16(ref $image) => $action,
+                        DynamicImage::ImageRgb32F(ref $image) => $action,
+                        DynamicImage::ImageRgba32F(ref $image) => $action,
                 }
         );
 
@@ -115,8 +127,8 @@ macro_rules! dynamic_map(
                         DynamicImage::ImageBgra8(ref mut $image) => $action,
                         DynamicImage::ImageLuma16(ref mut $image) => $action,
                         DynamicImage::ImageLumaA16(ref mut $image) => $action,
-                        DynamicImage::ImageRgb16(ref mut $image) => $action,
-                        DynamicImage::ImageRgba16(ref mut $image) => $action,
+                        DynamicImage::ImageRgb32F(ref mut $image) => $action,
+                        DynamicImage::ImageRgba32F(ref mut $image) => $action,
                 }
         );
 );
@@ -174,6 +186,16 @@ impl DynamicImage {
         DynamicImage::ImageRgba16(ImageBuffer::new(w, h))
     }
 
+    /// Creates a dynamic image backed by a buffer of RGB pixels.
+    pub fn new_rgb32f(w: u32, h: u32) -> DynamicImage {
+        DynamicImage::ImageRgb32F(ImageBuffer::new(w, h))
+    }
+
+    /// Creates a dynamic image backed by a buffer of RGBA pixels.
+    pub fn new_rgba32f(w: u32, h: u32) -> DynamicImage {
+        DynamicImage::ImageRgba32F(ImageBuffer::new(w, h))
+    }
+
     /// Decodes an encoded image into a dynamic image.
     pub fn from_decoder<'a>(decoder: impl ImageDecoder<'a>)
         -> ImageResult<Self>
@@ -203,6 +225,13 @@ impl DynamicImage {
         })
     }
 
+    /// Returns a copy of this image as an RGB image.
+    pub fn to_rgb32f(&self) -> Rgb32FImage {
+        dynamic_map!(*self, ref p -> {
+            p.convert()
+        })
+    }
+
     /// Returns a copy of this image as an RGBA image.
     #[deprecated = "replaced by `to_rgba8`"]
     pub fn to_rgba(&self) -> RgbaImage {
@@ -220,6 +249,13 @@ impl DynamicImage {
 
     /// Returns a copy of this image as an RGBA image.
     pub fn to_rgba16(&self) -> Rgba16Image {
+        dynamic_map!(*self, ref p -> {
+            p.convert()
+        })
+    }
+
+    /// Returns a copy of this image as an RGBA image.
+    pub fn to_rgba32f(&self) -> Rgba32FImage {
         dynamic_map!(*self, ref p -> {
             p.convert()
         })
@@ -333,6 +369,17 @@ impl DynamicImage {
         }
     }
 
+    /// Consume the image and returns a RGB image.
+    ///
+    /// If the image was already the correct format, it is returned as is.
+    /// Otherwise, a copy is created.
+    pub fn into_rgb32f(self) -> Rgb32FImage {
+        match self {
+            DynamicImage::ImageRgb32F(x) => x,
+            x => x.to_rgb32f(),
+        }
+    }
+
     /// Consume the image and returns a RGBA image.
     ///
     /// If the image was already the correct format, it is returned as is.
@@ -364,6 +411,17 @@ impl DynamicImage {
         match self {
             DynamicImage::ImageRgba16(x) => x,
             x => x.to_rgba16(),
+        }
+    }
+
+    /// Consume the image and returns a RGBA image.
+    ///
+    /// If the image was already the correct format, it is returned as is.
+    /// Otherwise, a copy is created.
+    pub fn into_rgba32f(self) -> Rgba32FImage {
+        match self {
+            DynamicImage::ImageRgba32F(x) => x,
+            x => x.to_rgba32f(),
         }
     }
 
@@ -610,6 +668,22 @@ impl DynamicImage {
         }
     }
 
+    /// Return a reference to an 32bit float RGB image
+    pub fn as_rgb32f(&self) -> Option<&Rgb32FImage> {
+        match *self {
+            DynamicImage::ImageRgb32F(ref p) => Some(p),
+            _ => None,
+        }
+    }
+
+    /// Return a mutable reference to an 16bit float RGB image
+    pub fn as_mut_rgb32f(&mut self) -> Option<&mut Rgb32FImage> {
+        match *self {
+            DynamicImage::ImageRgb32F(ref mut p) => Some(p),
+            _ => None,
+        }
+    }
+
     /// Return a reference to an 16bit RGBA image
     pub fn as_rgba16(&self) -> Option<&Rgba16Image> {
         match *self {
@@ -622,6 +696,22 @@ impl DynamicImage {
     pub fn as_mut_rgba16(&mut self) -> Option<&mut Rgba16Image> {
         match *self {
             DynamicImage::ImageRgba16(ref mut p) => Some(p),
+            _ => None,
+        }
+    }
+
+    /// Return a reference to an 16bit RGBA image
+    pub fn as_rgba32f(&self) -> Option<&Rgba32FImage> {
+        match *self {
+            DynamicImage::ImageRgba32F(ref p) => Some(p),
+            _ => None,
+        }
+    }
+
+    /// Return a mutable reference to an 16bit RGBA image
+    pub fn as_mut_rgba32f(&mut self) -> Option<&mut Rgba32FImage> {
+        match *self {
+            DynamicImage::ImageRgba32F(ref mut p) => Some(p),
             _ => None,
         }
     }
@@ -682,6 +772,15 @@ impl DynamicImage {
         }
     }
 
+    /// Return a view on the raw sample buffer for 32 bit per channel images.
+    pub fn as_flat_samples_f32(&self) -> Option<FlatSamples<&[f32]>> {
+        match *self {
+            DynamicImage::ImageRgb32F(ref p) => Some(p.as_flat_samples()),
+            DynamicImage::ImageRgba32F(ref p) => Some(p.as_flat_samples()),
+            _ => None,
+        }
+    }
+
     /// Return this image's pixels as a native endian byte slice.
     pub fn as_bytes(&self) -> &[u8] {
         image_as_bytes(self)
@@ -712,6 +811,8 @@ impl DynamicImage {
             DynamicImage::ImageLumaA16(_) => color::ColorType::La16,
             DynamicImage::ImageRgb16(_) => color::ColorType::Rgb16,
             DynamicImage::ImageRgba16(_) => color::ColorType::Rgba16,
+            DynamicImage::ImageRgb32F(_) => color::ColorType::Rgb32F,
+            DynamicImage::ImageRgba32F(_) => color::ColorType::Rgba32F,
         }
     }
 
@@ -742,6 +843,8 @@ impl DynamicImage {
             DynamicImage::ImageLumaA16(ref p) => DynamicImage::ImageLuma16(imageops::grayscale(p)),
             DynamicImage::ImageRgb16(ref p) => DynamicImage::ImageLuma16(imageops::grayscale(p)),
             DynamicImage::ImageRgba16(ref p) => DynamicImage::ImageLuma16(imageops::grayscale(p)),
+            DynamicImage::ImageRgb32F(ref p) => DynamicImage::ImageLuma32F(imageops::grayscale(p)),
+            DynamicImage::ImageRgba32F(ref p) => DynamicImage::ImageLuma32F(imageops::grayscale(p)),
         }
     }
 
@@ -1061,6 +1164,18 @@ impl From<Rgba16Image> for DynamicImage {
     }
 }
 
+impl From<Rgb32FImage> for DynamicImage {
+    fn from(image: Rgb32FImage) -> Self {
+        DynamicImage::ImageRgb32F(image)
+    }
+}
+
+impl From<Rgba32FImage> for DynamicImage {
+    fn from(image: Rgba32FImage) -> Self {
+        DynamicImage::ImageRgba32F(image)
+    }
+}
+
 #[allow(deprecated)]
 impl GenericImageView for DynamicImage {
     type Pixel = color::Rgba<u8>;
@@ -1099,6 +1214,8 @@ impl GenericImage for DynamicImage {
             DynamicImage::ImageLumaA16(ref mut p) => p.put_pixel(x, y, pixel.to_luma_alpha().into_color()),
             DynamicImage::ImageRgb16(ref mut p) => p.put_pixel(x, y, pixel.to_rgb().into_color()),
             DynamicImage::ImageRgba16(ref mut p) => p.put_pixel(x, y, pixel.into_color()),
+            DynamicImage::ImageRgb32F(ref mut p) => p.put_pixel(x, y, pixel.to_rgb().into_color()),
+            DynamicImage::ImageRgba32F(ref mut p) => p.put_pixel(x, y, pixel.into_color()),
         }
     }
     /// DEPRECATED: Use iterator `pixels_mut` to blend the pixels directly.
@@ -1114,6 +1231,8 @@ impl GenericImage for DynamicImage {
             DynamicImage::ImageLumaA16(ref mut p) => p.blend_pixel(x, y, pixel.to_luma_alpha().into_color()),
             DynamicImage::ImageRgb16(ref mut p) => p.blend_pixel(x, y, pixel.to_rgb().into_color()),
             DynamicImage::ImageRgba16(ref mut p) => p.blend_pixel(x, y, pixel.into_color()),
+            DynamicImage::ImageRgb32F(ref mut p) => p.blend_pixel(x, y, pixel.to_rgb().into_color()),
+            DynamicImage::ImageRgba32F(ref mut p) => p.blend_pixel(x, y, pixel.into_color()),
         }
     }
 
@@ -1173,14 +1292,26 @@ fn decoder_to_image<'a, I: ImageDecoder<'a>>(decoder: I) -> ImageResult<DynamicI
             ImageBuffer::from_raw(w, h, buf).map(DynamicImage::ImageRgba16)
         }
 
+        color::ColorType::Rgb32F => {
+            let buf = image::decoder_to_vec(decoder)?;
+            ImageBuffer::from_raw(w, h, buf).map(DynamicImage::ImageRgb32F)
+        }
+
+        color::ColorType::Rgba32F => {
+            let buf = image::decoder_to_vec(decoder)?;
+            ImageBuffer::from_raw(w, h, buf).map(DynamicImage::ImageRgba32F)
+        }
+
         color::ColorType::L16 => {
             let buf = image::decoder_to_vec(decoder)?;
             ImageBuffer::from_raw(w, h, buf).map(DynamicImage::ImageLuma16)
         }
+
         color::ColorType::La16 => {
             let buf = image::decoder_to_vec(decoder)?;
             ImageBuffer::from_raw(w, h, buf).map(DynamicImage::ImageLumaA16)
         }
+
         _ => return Err(ImageError::Unsupported(UnsupportedError::from_format_and_kind(
             ImageFormatHint::Unknown,
             UnsupportedErrorKind::Color(color_type.into()),
@@ -1209,6 +1340,8 @@ fn image_to_bytes(image: &DynamicImage) -> Vec<u8> {
         DynamicImage::ImageLumaA16(ref a) => a.as_bytes().to_vec(),
         DynamicImage::ImageRgb16(ref a) => a.as_bytes().to_vec(),
         DynamicImage::ImageRgba16(ref a) => a.as_bytes().to_vec(),
+        DynamicImage::ImageRgb32F(ref a) => a.as_bytes().to_vec(),
+        DynamicImage::ImageRgba32F(ref a) => a.as_bytes().to_vec(),
     }
 }
 
@@ -1224,6 +1357,8 @@ fn image_into_bytes(image: DynamicImage) -> Vec<u8> {
         DynamicImage::ImageLumaA16(_) => image.to_bytes(),
         DynamicImage::ImageRgb16(_) => image.to_bytes(),
         DynamicImage::ImageRgba16(_) => image.to_bytes(),
+        DynamicImage::ImageRgb32F(_) => image.to_bytes(),
+        DynamicImage::ImageRgba32F(_) => image.to_bytes(),
     }
 }
 
@@ -1240,6 +1375,8 @@ fn image_as_bytes(image: &DynamicImage) -> &[u8] {
         DynamicImage::ImageLumaA16(a) => cast_slice(&*a),
         DynamicImage::ImageRgb16(a) => cast_slice(&*a),
         DynamicImage::ImageRgba16(a) => cast_slice(&*a),
+        DynamicImage::ImageRgb32F(a) => cast_slice(&*a),
+        DynamicImage::ImageRgba32F(a) => cast_slice(&*a),
     }
 }
 

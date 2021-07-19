@@ -210,7 +210,7 @@ fn horizontal_sample<I, P, S>(
 ) -> ImageBuffer<P, Vec<S>>
 where
     I: GenericImageView<Pixel = P>,
-    P: Pixel<Subpixel = S> + 'static,
+    P: Pixel<Sample= S> + 'static,
     S: Primitive + 'static,
 {
     let (width, height) = image.dimensions();
@@ -301,7 +301,7 @@ fn vertical_sample<I, P, S>(
 ) -> ImageBuffer<P, Vec<S>>
 where
     I: GenericImageView<Pixel = P>,
-    P: Pixel<Subpixel = S> + 'static,
+    P: Pixel<Sample= S> + 'static,
     S: Primitive + 'static,
 {
     let (width, height) = image.dimensions();
@@ -385,7 +385,7 @@ impl<S: Primitive + Enlargeable> ThumbnailSum<S> {
         <S::Larger as NumCast>::from(val).unwrap()
     }
 
-    fn add_pixel<P: Pixel<Subpixel=S>>(&mut self, pixel: P) {
+    fn add_pixel<P: Pixel<Sample=S>>(&mut self, pixel: P) {
         let pixel = pixel.channels4();
         self.0 += Self::sample_val(pixel.0);
         self.1 += Self::sample_val(pixel.1);
@@ -409,7 +409,7 @@ impl<S: Primitive + Enlargeable> ThumbnailSum<S> {
 pub fn thumbnail<I, P, S>(image: &I, new_width: u32, new_height: u32) -> ImageBuffer<P, Vec<S>>
 where
     I: GenericImageView<Pixel = P>,
-    P: Pixel<Subpixel = S> + 'static,
+    P: Pixel<Sample= S> + 'static,
     S: Primitive + Enlargeable + 'static,
 {
     let (width, height) = image.dimensions();
@@ -491,7 +491,7 @@ fn thumbnail_sample_block<I, P, S>(
 ) -> (S, S, S, S)
 where
     I: GenericImageView<Pixel = P>,
-    P: Pixel<Subpixel = S>,
+    P: Pixel<Sample= S>,
     S: Primitive + Enlargeable,
 {
     let mut sum = ThumbnailSum::zeroed();
@@ -525,7 +525,7 @@ fn thumbnail_sample_fraction_horizontal<I, P, S>(
 ) -> (S, S, S, S)
 where
     I: GenericImageView<Pixel = P>,
-    P: Pixel<Subpixel = S>,
+    P: Pixel<Sample= S>,
     S: Primitive + Enlargeable,
 {
     let fract = fraction_horizontal;
@@ -568,7 +568,7 @@ fn thumbnail_sample_fraction_vertical<I, P, S>(
 ) -> (S, S, S, S)
 where
     I: GenericImageView<Pixel = P>,
-    P: Pixel<Subpixel = S>,
+    P: Pixel<Sample= S>,
     S: Primitive + Enlargeable,
 {
     let fract = fraction_vertical;
@@ -611,7 +611,7 @@ fn thumbnail_sample_fraction_both<I, P, S>(
 ) -> (S, S, S, S)
 where
     I: GenericImageView<Pixel = P>,
-    P: Pixel<Subpixel = S>,
+    P: Pixel<Sample= S>,
     S: Primitive + Enlargeable,
 {
     let k_bl = image.get_pixel(left,     bottom    ).channels4();
@@ -648,7 +648,7 @@ where
 pub fn filter3x3<I, P, S>(image: &I, kernel: &[f32]) -> ImageBuffer<P, Vec<S>>
 where
     I: GenericImageView<Pixel = P>,
-    P: Pixel<Subpixel = S> + 'static,
+    P: Pixel<Sample= S> + 'static,
     S: Primitive + 'static,
 {
     // The kernel's input positions relative to the current pixel.
@@ -730,10 +730,10 @@ pub fn resize<I: GenericImageView>(
     nwidth: u32,
     nheight: u32,
     filter: FilterType,
-) -> ImageBuffer<I::Pixel, Vec<<I::Pixel as Pixel>::Subpixel>>
+) -> ImageBuffer<I::Pixel, Vec<<I::Pixel as Pixel>::Sample>>
 where
     I::Pixel: 'static,
-    <I::Pixel as Pixel>::Subpixel: 'static,
+    <I::Pixel as Pixel>::Sample: 'static,
 {
     let mut method = match filter {
         FilterType::Nearest => Filter {
@@ -767,7 +767,7 @@ where
 pub fn blur<I: GenericImageView>(
     image: &I,
     sigma: f32,
-) -> ImageBuffer<I::Pixel, Vec<<I::Pixel as Pixel>::Subpixel>>
+) -> ImageBuffer<I::Pixel, Vec<<I::Pixel as Pixel>::Sample>>
 where
     I::Pixel: 'static,
 {
@@ -794,7 +794,7 @@ where
 pub fn unsharpen<I, P, S>(image: &I, sigma: f32, threshold: i32) -> ImageBuffer<P, Vec<S>>
 where
     I: GenericImageView<Pixel = P>,
-    P: Pixel<Subpixel = S> + 'static,
+    P: Pixel<Sample= S> + 'static,
     S: Primitive + 'static,
 {
     let mut tmp = blur(image, sigma);

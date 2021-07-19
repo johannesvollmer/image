@@ -572,8 +572,8 @@ impl<Buffer> FlatSamples<Buffer> {
     /// buffer. It also checks that the specified pixel format expects the same number of channels
     /// that are present in this buffer. Neither are larger nor a smaller number will be accepted.
     /// There is no automatic conversion.
-    pub fn as_view<P>(&self) -> Result<View<&[P::Subpixel], P>, Error>
-        where P: Pixel, Buffer: AsRef<[P::Subpixel]>,
+    pub fn as_view<P>(&self) -> Result<View<&[P::Sample], P>, Error>
+        where P: Pixel, Buffer: AsRef<[P::Sample]>,
     {
         if self.layout.channels != P::CHANNEL_COUNT {
             return Err(Error::WrongColor(P::COLOR_TYPE))
@@ -609,8 +609,8 @@ impl<Buffer> FlatSamples<Buffer> {
     /// **WARNING**: Note that of course samples may alias, so that the mutable reference returned
     /// for one sample can in fact modify other samples as well. Sometimes exactly this is
     /// intended.
-    pub fn as_view_with_mut_samples<P>(&mut self) -> Result<View<&mut [P::Subpixel], P>, Error>
-        where P: Pixel, Buffer: AsMut<[P::Subpixel]>,
+    pub fn as_view_with_mut_samples<P>(&mut self) -> Result<View<&mut [P::Sample], P>, Error>
+        where P: Pixel, Buffer: AsMut<[P::Sample]>,
     {
         if self.layout.channels != P::CHANNEL_COUNT {
             return Err(Error::WrongColor(P::COLOR_TYPE))
@@ -642,8 +642,8 @@ impl<Buffer> FlatSamples<Buffer> {
     /// provides many more operations, is possibly faster (if not you may want to open an issue) is
     /// generally polished. You can also try to convert this buffer inline, see
     /// `ImageBuffer::from_raw`.
-    pub fn as_view_mut<P>(&mut self) -> Result<ViewMut<&mut [P::Subpixel], P>, Error>
-        where P: Pixel, Buffer: AsMut<[P::Subpixel]>,
+    pub fn as_view_mut<P>(&mut self) -> Result<ViewMut<&mut [P::Sample], P>, Error>
+        where P: Pixel, Buffer: AsMut<[P::Sample]>,
     {
         if !self.layout.is_normal(NormalForm::PixelPacked) {
             return Err(Error::NormalFormRequired(NormalForm::PixelPacked))
@@ -726,8 +726,8 @@ impl<Buffer> FlatSamples<Buffer> {
     pub fn try_into_buffer<P>(self) -> Result<ImageBuffer<P, Buffer>, (Error, Self)>
     where
         P: Pixel + 'static,
-        P::Subpixel: 'static,
-        Buffer: Deref<Target=[P::Subpixel]>,
+        P::Sample: 'static,
+        Buffer: Deref<Target=[P::Sample]>,
     {
         if !self.is_normal(NormalForm::RowMajorPacked) {
             return Err((Error::NormalFormRequired(NormalForm::RowMajorPacked), self))
@@ -893,7 +893,7 @@ impl<'buf, Subpixel> FlatSamples<&'buf [Subpixel]> {
     /// ```
     pub fn with_monocolor<P>(pixel: &'buf P, width: u32, height: u32) -> Self
     where
-        P: Pixel<Subpixel=Subpixel>,
+        P: Pixel<Sample=Subpixel>,
         Subpixel: Primitive,
     {
         FlatSamples {
@@ -928,7 +928,7 @@ impl<'buf, Subpixel> FlatSamples<&'buf [Subpixel]> {
 #[derive(Clone, Debug)]
 pub struct View<Buffer, P: Pixel>
 where
-    Buffer: AsRef<[P::Subpixel]>
+    Buffer: AsRef<[P::Sample]>
 {
     inner: FlatSamples<Buffer>,
     phantom: PhantomData<P>,
@@ -951,7 +951,7 @@ where
 #[derive(Clone, Debug)]
 pub struct ViewMut<Buffer, P: Pixel>
 where
-    Buffer: AsMut<[P::Subpixel]>
+    Buffer: AsMut<[P::Sample]>
 {
     inner: FlatSamples<Buffer>,
     phantom: PhantomData<P>,
@@ -1027,7 +1027,7 @@ pub enum NormalForm {
 
 impl<Buffer, P: Pixel> View<Buffer, P>
 where
-    Buffer: AsRef<[P::Subpixel]>
+    Buffer: AsRef<[P::Sample]>
 {
     /// Take out the sample buffer.
     ///
@@ -1058,7 +1058,7 @@ where
     ///
     /// This method will return `None` when the sample is out-of-bounds. All errors that could
     /// occur due to overflow have been eliminated while construction the `View`.
-    pub fn get_sample(&self, channel: u8, x: u32, y: u32) -> Option<&P::Subpixel> {
+    pub fn get_sample(&self, channel: u8, x: u32, y: u32) -> Option<&P::Sample> {
         if !self.inner.in_bounds(channel, x, y) {
             return None
         }
@@ -1076,8 +1076,8 @@ where
     ///
     /// **WARNING**: Note that of course samples may alias, so that the mutable reference returned
     /// here can in fact modify more than the coordinate in the argument.
-    pub fn get_mut_sample(&mut self, channel: u8, x: u32, y: u32) -> Option<&mut P::Subpixel>
-        where Buffer: AsMut<[P::Subpixel]>
+    pub fn get_mut_sample(&mut self, channel: u8, x: u32, y: u32) -> Option<&mut P::Sample>
+        where Buffer: AsMut<[P::Sample]>
     {
         if !self.inner.in_bounds(channel, x, y) {
             return None
@@ -1099,7 +1099,7 @@ where
     ///
     /// While this can not fail–the validity of all coordinates has been validated during the
     /// conversion from `FlatSamples`–the resulting slice may still contain holes.
-    pub fn image_slice(&self) -> &[P::Subpixel] {
+    pub fn image_slice(&self) -> &[P::Sample] {
         &self.samples().as_ref()[..self.min_length()]
     }
 
@@ -1108,8 +1108,8 @@ where
     /// This is relevant only when constructed with `FlatSamples::as_view_with_mut_samples`. While
     /// this can not fail–the validity of all coordinates has been validated during the conversion
     /// from `FlatSamples`–the resulting slice may still contain holes.
-    pub fn image_mut_slice(&mut self) -> &mut [P::Subpixel]
-        where Buffer: AsMut<[P::Subpixel]>
+    pub fn image_mut_slice(&mut self) -> &mut [P::Sample]
+        where Buffer: AsMut<[P::Sample]>
     {
         let min_length = self.min_length();
         &mut self.inner.samples.as_mut()[..min_length]
@@ -1144,7 +1144,7 @@ where
     /// let view_mut = view.try_upgrade().unwrap();
     /// ```
     pub fn try_upgrade(self) -> Result<ViewMut<Buffer, P>, (Error, Self)>
-        where Buffer: AsMut<[P::Subpixel]>
+        where Buffer: AsMut<[P::Sample]>
     {
         if !self.inner.is_normal(NormalForm::PixelPacked) {
             return Err((Error::NormalFormRequired(NormalForm::PixelPacked), self))
@@ -1160,7 +1160,7 @@ where
 
 impl<Buffer, P: Pixel> ViewMut<Buffer, P>
 where
-    Buffer: AsMut<[P::Subpixel]>
+    Buffer: AsMut<[P::Sample]>
 {
     /// Take out the sample buffer.
     ///
@@ -1199,8 +1199,8 @@ where
     ///
     /// This method will return `None` when the sample is out-of-bounds. All errors that could
     /// occur due to overflow have been eliminated while construction the `View`.
-    pub fn get_sample(&self, channel: u8, x: u32, y: u32) -> Option<&P::Subpixel>
-        where Buffer: AsRef<[P::Subpixel]>
+    pub fn get_sample(&self, channel: u8, x: u32, y: u32) -> Option<&P::Sample>
+        where Buffer: AsRef<[P::Sample]>
     {
         if !self.inner.in_bounds(channel, x, y) {
             return None
@@ -1215,7 +1215,7 @@ where
     ///
     /// This method will return `None` when the sample is out-of-bounds. All errors that could
     /// occur due to overflow have been eliminated while construction the `View`.
-    pub fn get_mut_sample(&mut self, channel: u8, x: u32, y: u32) -> Option<&mut P::Subpixel> {
+    pub fn get_mut_sample(&mut self, channel: u8, x: u32, y: u32) -> Option<&mut P::Sample> {
         if !self.inner.in_bounds(channel, x, y) {
             return None
         }
@@ -1229,12 +1229,12 @@ where
     ///
     /// While this can not fail–the validity of all coordinates has been validated during the
     /// conversion from `FlatSamples`–the resulting slice may still contain holes.
-    pub fn image_slice(&self) -> &[P::Subpixel] where Buffer: AsRef<[P::Subpixel]> {
+    pub fn image_slice(&self) -> &[P::Sample] where Buffer: AsRef<[P::Sample]> {
         &self.inner.samples.as_ref()[..self.min_length()]
     }
 
     /// Return the mutable buffer that holds sample values.
-    pub fn image_mut_slice(&mut self) -> &mut [P::Subpixel] {
+    pub fn image_mut_slice(&mut self) -> &mut [P::Sample] {
         let length = self.min_length();
         &mut self.inner.samples.as_mut()[..length]
     }
@@ -1310,7 +1310,7 @@ impl<Buffer> IndexMut<(u8, u32, u32)> for FlatSamples<Buffer>
 }
 
 impl<Buffer, P: Pixel> GenericImageView for View<Buffer, P>
-    where Buffer: AsRef<[P::Subpixel]>
+    where Buffer: AsRef<[P::Sample]>
 {
     type Pixel = P;
 
@@ -1355,7 +1355,7 @@ impl<Buffer, P: Pixel> GenericImageView for View<Buffer, P>
 }
 
 impl<Buffer, P: Pixel> GenericImageView for ViewMut<Buffer, P>
-    where Buffer: AsMut<[P::Subpixel]> + AsRef<[P::Subpixel]>,
+    where Buffer: AsMut<[P::Sample]> + AsRef<[P::Sample]>,
 {
     type Pixel = P;
 
@@ -1400,7 +1400,7 @@ impl<Buffer, P: Pixel> GenericImageView for ViewMut<Buffer, P>
 }
 
 impl<Buffer, P: Pixel> GenericImage for ViewMut<Buffer, P>
-    where Buffer: AsMut<[P::Subpixel]> + AsRef<[P::Subpixel]>,
+    where Buffer: AsMut<[P::Sample]> + AsRef<[P::Sample]>,
 {
     type InnerImage = Self;
 

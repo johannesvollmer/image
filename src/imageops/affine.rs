@@ -8,7 +8,7 @@ use crate::traits::Pixel;
 /// Rotate an image 90 degrees clockwise.
 pub fn rotate90<I: GenericImageView>(
     image: &I,
-) -> ImageBuffer<I::Pixel, Vec<<I::Pixel as Pixel>::Subpixel>>
+) -> ImageBuffer<I::Pixel, Vec<<I::Pixel as Pixel>::Sample>>
     where I::Pixel: 'static,
 {
     let (width, height) = image.dimensions();
@@ -20,7 +20,7 @@ pub fn rotate90<I: GenericImageView>(
 /// Rotate an image 180 degrees clockwise.
 pub fn rotate180<I: GenericImageView>(
     image: &I,
-) -> ImageBuffer<I::Pixel, Vec<<I::Pixel as Pixel>::Subpixel>>
+) -> ImageBuffer<I::Pixel, Vec<<I::Pixel as Pixel>::Sample>>
     where I::Pixel: 'static,
 {
     let (width, height) = image.dimensions();
@@ -32,7 +32,7 @@ pub fn rotate180<I: GenericImageView>(
 /// Rotate an image 270 degrees clockwise.
 pub fn rotate270<I: GenericImageView>(
     image: &I,
-) -> ImageBuffer<I::Pixel, Vec<<I::Pixel as Pixel>::Subpixel>>
+) -> ImageBuffer<I::Pixel, Vec<<I::Pixel as Pixel>::Sample>>
     where I::Pixel: 'static,
 {
     let (width, height) = image.dimensions();
@@ -48,7 +48,7 @@ pub fn rotate90_in<I, Container>(
 ) -> crate::ImageResult<()> where
     I: GenericImageView,
     I::Pixel: 'static, 
-    Container: std::ops::DerefMut<Target = [<I::Pixel as Pixel>::Subpixel]> 
+    Container: std::ops::DerefMut<Target = [<I::Pixel as Pixel>::Sample]>
 {
     let ((w0, h0), (w1, h1)) = (image.dimensions(), destination.dimensions());
     if w0 != h1 || h0 != w1 {
@@ -73,7 +73,7 @@ pub fn rotate180_in<I, Container>(
 ) -> crate::ImageResult<()> where
     I: GenericImageView,
     I::Pixel: 'static, 
-    Container: std::ops::DerefMut<Target = [<I::Pixel as Pixel>::Subpixel]> 
+    Container: std::ops::DerefMut<Target = [<I::Pixel as Pixel>::Sample]>
 {
     let ((w0, h0), (w1, h1)) = (image.dimensions(), destination.dimensions());
     if w0 != w1 || h0 != h1 {
@@ -98,7 +98,7 @@ pub fn rotate270_in<I, Container>(
 ) -> crate::ImageResult<()> where
     I: GenericImageView,
     I::Pixel: 'static, 
-    Container: std::ops::DerefMut<Target = [<I::Pixel as Pixel>::Subpixel]> 
+    Container: std::ops::DerefMut<Target = [<I::Pixel as Pixel>::Sample]>
 {
     let ((w0, h0), (w1, h1)) = (image.dimensions(), destination.dimensions());
     if w0 != h1 || h0 != w1 {
@@ -119,7 +119,7 @@ pub fn rotate270_in<I, Container>(
 /// Flip an image horizontally
 pub fn flip_horizontal<I: GenericImageView>(
     image: &I,
-) -> ImageBuffer<I::Pixel, Vec<<I::Pixel as Pixel>::Subpixel>>
+) -> ImageBuffer<I::Pixel, Vec<<I::Pixel as Pixel>::Sample>>
     where I::Pixel: 'static,
 {
     let (width, height) = image.dimensions();
@@ -131,7 +131,7 @@ pub fn flip_horizontal<I: GenericImageView>(
 /// Flip an image vertically
 pub fn flip_vertical<I: GenericImageView>(
     image: &I,
-) -> ImageBuffer<I::Pixel, Vec<<I::Pixel as Pixel>::Subpixel>>
+) -> ImageBuffer<I::Pixel, Vec<<I::Pixel as Pixel>::Sample>>
     where I::Pixel: 'static,
 {
     let (width, height) = image.dimensions();
@@ -147,7 +147,7 @@ pub fn flip_horizontal_in<I, Container>(
 ) -> crate::ImageResult<()> where
     I: GenericImageView,
     I::Pixel: 'static, 
-    Container: std::ops::DerefMut<Target = [<I::Pixel as Pixel>::Subpixel]> 
+    Container: std::ops::DerefMut<Target = [<I::Pixel as Pixel>::Sample]>
 {
     let ((w0, h0), (w1, h1)) = (image.dimensions(), destination.dimensions());
     if w0 != w1 || h0 != h1 {
@@ -172,7 +172,7 @@ pub fn flip_vertical_in<I, Container>(
 ) -> crate::ImageResult<()> where
     I: GenericImageView,
     I::Pixel: 'static, 
-    Container: std::ops::DerefMut<Target = [<I::Pixel as Pixel>::Subpixel]> 
+    Container: std::ops::DerefMut<Target = [<I::Pixel as Pixel>::Sample]>
 {
     let ((w0, h0), (w1, h1)) = (image.dimensions(), destination.dimensions());
     if w0 != w1 || h0 != h1 {

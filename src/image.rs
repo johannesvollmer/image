@@ -987,7 +987,7 @@ pub struct SubImage<I> {
 type DerefPixel<I> = <<I as Deref>::Target as GenericImageView>::Pixel;
 
 /// Alias to access Subpixel behind a reference
-type DerefSubpixel<I> = <DerefPixel<I> as Pixel>::Subpixel;
+type DerefSubpixel<I> = <DerefPixel<I> as Pixel>::Sample;
 
 impl<I> SubImage<I> {
     /// Construct a new subimage
