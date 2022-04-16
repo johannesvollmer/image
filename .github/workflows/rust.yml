@@ -38,7 +38,7 @@ jobs:
     - name: build
       run: cargo build -v --release
     - name: test
-      run: cargo test -v --release --features jpeg/platform_independent
+      run: cargo test -v --release
   test_avif:
     runs-on: ubuntu-20.04
     steps:
@@ -159,3 +159,8 @@ jobs:
       with:
         command: fmt
         args: -- --check
+  cargo-deny:
+    runs-on: ubuntu-20.04
+    steps:
+      - uses: actions/checkout@v2
+      - uses: EmbarkStudios/cargo-deny-action@v1
